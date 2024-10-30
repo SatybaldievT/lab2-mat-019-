@@ -1217,13 +1217,15 @@ pub async fn check_table(data: Json<CheckTableRequest>) -> HttpResponse {
     let (isEq, vec_c_examp) =
         graph.is_equivalent_counterexample2(&graph1, *_width + 3, startpoint, alphabet);
     if isEq {
-        HttpResponse::Ok().json("true")
+        HttpResponse::Ok().header(header::CONTENT_TYPE, "application/json")
+        .body("true")
     } else {
         let mut word = String::new();
         for symbol in vec_c_examp.iter() {
             word.push(*symbol);
         }
-        HttpResponse::Ok().json(word)
+        HttpResponse::Ok().header(header::CONTENT_TYPE, "application/json")
+        .body(word)
     }
 }
 
