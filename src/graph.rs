@@ -1062,7 +1062,7 @@ pub fn dfa_from_lstar(
         state_map.insert(p.to_string(), idx);
         let is_final = rows[idx].chars().next().unwrap().to_digit(10).unwrap() == 1;
         graph.add_node(idx, is_final);
-        if (p.to_string() == "e".to_string()) {
+        if (p.to_string() == "".to_string()) {
             if q0.is_none() {
                 q0 = Some(idx);
             }
@@ -1087,6 +1087,7 @@ pub fn dfa_from_lstar(
             graph.add_edge(from, to, letter);
         }
     }
+    graph.print_dot();
 
     (q0.expect("smt with table"), graph)
 }
@@ -1187,19 +1188,28 @@ pub async fn check_table(data: Json<CheckTableRequest>) -> HttpResponse {
     let main_prefix_strings: Vec<String> = data
         .main_prefixes
         .split_ascii_whitespace()
+        .map(|s| s.replace("e", ""))
         .map(String::from)
         .collect();
     let complementary_prefix_strings: Vec<String> = data
         .complementary_prefixes
         .split_ascii_whitespace()
+        .map(|s| s.replace("e", ""))
         .map(String::from)
         .collect();
     let suffix_strings: Vec<String> = data
         .suffixes
         .split_ascii_whitespace()
+        .map(|s| s.replace("e", ""))
         .map(String::from)
         .collect();
-    let table_rows: Vec<String> = data.table.split('\n').map(String::from).collect();
+    let table_rows: Vec<String> = data
+        .table
+        .chars()
+        .collect::<Vec<char>>()
+        .chunks(suffix_strings.len())
+        .map(|chunk| chunk.iter().collect::<String>())
+        .collect();
 
     // инициализация графов
     let (mut startpoint, mut graph1) = dfa_from_lstar(
@@ -1217,15 +1227,17 @@ pub async fn check_table(data: Json<CheckTableRequest>) -> HttpResponse {
     let (isEq, vec_c_examp) =
         graph.is_equivalent_counterexample2(&graph1, *_width + 3, startpoint, alphabet);
     if isEq {
-        HttpResponse::Ok().header(header::CONTENT_TYPE, "application/json")
-        .body("true")
+        HttpResponse::Ok()
+            .header(header::CONTENT_TYPE, "application/json")
+            .body("true")
     } else {
         let mut word = String::new();
         for symbol in vec_c_examp.iter() {
             word.push(*symbol);
         }
-        HttpResponse::Ok().header(header::CONTENT_TYPE, "application/json")
-        .body(word)
+        HttpResponse::Ok()
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(word)
     }
 }
 
@@ -1239,11 +1251,11 @@ pub async fn check_membership(path: String) -> HttpResponse {
     let result = graph.travers(*_width + 3, path);
     if result {
         HttpResponse::Ok()
-        .header(header::CONTENT_TYPE, "application/json")
-        .body("1")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body("1")
     } else {
         HttpResponse::Ok()
-        .header(header::CONTENT_TYPE, "application/json")
-        .body("0")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body("0")
     }
 }
