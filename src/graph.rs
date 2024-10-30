@@ -1047,12 +1047,13 @@ fn init_graph() {
 pub async fn generate_graph(data: Json<GenerateGraphRequest>) -> HttpResponse {
     init_graph(); // инициализируем граф, если он еще не инициализирован
 
-    let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
+    let mut graph = Graph::new();
+    
     unsafe {
         GLOBAL_RNG = Some(rand::thread_rng());
     }
     fill_rand_dfs_rect(
-        &mut *graph,
+        &mut graph,
         data.num_of_finish_edge,
         data.pr_of_break_wall,
         data.width,
@@ -1065,19 +1066,19 @@ pub async fn generate_graph(data: Json<GenerateGraphRequest>) -> HttpResponse {
 
     let alphabet = vec!['N', 'S', 'W', 'E'];
     graph.complete_with_alphabet(alphabet.clone());
-
+    let graph_string = graph.to_json_string();
     unsafe {
         *WIDTH.as_ref().unwrap().lock().unwrap() = data.width;
         *HEIGHT.as_ref().unwrap().lock().unwrap() = data.height;
-    }
+        *GRAPH.as_ref().unwrap().lock().unwrap() = graph};
     
-    let graph_string = graph.to_json_string();
+    
     HttpResponse::Ok().json(graph_string)
 }
 
 #[get("/get_graph")]
 pub async fn get_graph() -> HttpResponse {
-    init_graph(); // инициализируем граф, если он еще не инициализирован
+    // инициализируем граф, если он еще не инициализирован
     let graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
     let graph_string = graph.to_json_string();
     HttpResponse::Ok().json(graph_string)
@@ -1091,7 +1092,7 @@ struct CheckAutomataRequest {
 
 #[post("/check_automata")]
 pub async fn check_automata(data: Json<CheckAutomataRequest>) -> HttpResponse {
-    init_graph(); // инициализируем граф, если он еще не инициализирован
+    // инициализируем граф, если он еще не инициализирован
     let mut graph1: Graph = Graph::from_json(&data.graph_data).expect("wrong graph json ");
     let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
     let mut width = unsafe { WIDTH.as_ref().unwrap().lock().unwrap() };
