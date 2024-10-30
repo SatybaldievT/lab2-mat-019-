@@ -522,13 +522,12 @@ impl Graph {
         (true, self.restore_path(parent, used, (s1, s2)))
     }
 
-    fn  from_table(
+    fn from_table(
         main_prefixes: String,
-        non_main_prefixes: String,
+        complementary_prefixes: String,
         suffixes: String,
-        table: Vec<bool>
-    ){
-
+        rows: Vec<bool>,
+    ) {
     }
 
     pub fn is_equivalent_counterexample2(
@@ -1046,6 +1045,52 @@ fn init_graph() {
     }
 }
 
+// cпасибо вове за кусочек кода
+pub fn dfa_from_lstar(
+    main_prefixes: &[String],
+    complementary_prefixes: &[String],
+    suffixes: &[String],
+    rows: Vec<String>,
+) -> (usize, Graph) {
+    let mut graph = Graph::new();
+    let mut state_map = HashMap::new();
+    let mut prefix_to_row = HashMap::new();
+    let mut row_to_prefix = HashMap::new();
+    let mut q0 = None;
+
+    for (idx, p) in main_prefixes.iter().enumerate() {
+        state_map.insert(p.to_string(), idx);
+        let is_final = rows[idx].chars().next().unwrap().to_digit(10).unwrap() == 1;
+        graph.add_node(idx, is_final);
+        if (p.to_string() == "e".to_string()) {
+            if q0.is_none() {
+                q0 = Some(idx);
+            }
+        }
+    }
+
+    for (idx, p) in main_prefixes.iter().enumerate() {
+        prefix_to_row.insert(p.to_string(), rows[idx].as_str());
+        row_to_prefix.insert(rows[idx].as_str(), p.to_string());
+    }
+
+    for (idx, p) in complementary_prefixes.iter().enumerate() {
+        prefix_to_row.insert(p.to_string(), rows[main_prefixes.len() + idx].as_str());
+    }
+
+    for p in main_prefixes.iter().chain(complementary_prefixes) {
+        if p.len() > 0 {
+            let sub_prefix = &p[0..p.len() - 1];
+            let letter = p.chars().last().unwrap();
+            let from = *state_map.get(sub_prefix).unwrap_or(&0);
+            let to = *state_map.get(p).unwrap_or(&0);
+            graph.add_edge(from, to, letter);
+        }
+    }
+
+    (q0.expect("smt with table"), graph)
+}
+
 #[post("/generate_graph")]
 pub async fn generate_graph(data: Json<GenerateGraphRequest>) -> HttpResponse {
     init_graph(); // инициализируем граф, если он еще не инициализирован
@@ -1077,8 +1122,9 @@ pub async fn generate_graph(data: Json<GenerateGraphRequest>) -> HttpResponse {
         *GRAPH.as_ref().unwrap().lock().unwrap() = graph
     };
 
-    HttpResponse::Ok().header(header::CONTENT_TYPE, "application/json")
-     .body(graph_string)
+    HttpResponse::Ok()
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(graph_string)
 }
 
 #[get("/get_graph")]
@@ -1090,8 +1136,9 @@ pub async fn get_graph() -> HttpResponse {
     let graph_string = graph.to_json_string();
     graph.print_png_rect(*_width + 2, *_height + 2, "get_graph.png");
     graph.print_json_to_file("get_graph.json");
-    HttpResponse::Ok().header(header::CONTENT_TYPE, "application/json")
-     .body(graph_string)
+    HttpResponse::Ok()
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(graph_string)
 }
 
 #[derive(Deserialize)]
@@ -1125,6 +1172,61 @@ pub async fn check_automata(data: Json<CheckAutomataRequest>) -> HttpResponse {
     }
 }
 
+#[derive(Deserialize)]
+struct CheckTableRequest {
+    main_prefixes: String,
+    complementary_prefixes: String,
+    suffixes: String,
+    table: String,
+}
+
+#[post("/check_table")]
+pub async fn check_table(data: Json<CheckTableRequest>) -> HttpResponse {
+    // инициализируем граф, если он еще не инициализирован
+    // разделение строк
+    let main_prefix_strings: Vec<String> = data
+        .main_prefixes
+        .split_ascii_whitespace()
+        .map(String::from)
+        .collect();
+    let complementary_prefix_strings: Vec<String> = data
+        .complementary_prefixes
+        .split_ascii_whitespace()
+        .map(String::from)
+        .collect();
+    let suffix_strings: Vec<String> = data
+        .suffixes
+        .split_ascii_whitespace()
+        .map(String::from)
+        .collect();
+    let table_rows: Vec<String> = data.table.split('\n').map(String::from).collect();
+
+    // инициализация графов
+    let (mut startpoint, mut graph1) = dfa_from_lstar(
+        &main_prefix_strings,
+        &complementary_prefix_strings,
+        &suffix_strings,
+        table_rows,
+    );
+    let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
+    let mut _width = unsafe { WIDTH.as_ref().unwrap().lock().unwrap() };
+    let mut _height = unsafe { HEIGHT.as_ref().unwrap().lock().unwrap() };
+    let alphabet = vec!['N', 'S', 'W', 'E'];
+    // graph.print_png_rect(*_width +2, *_height+2, "post_genrated");
+    // graph1.print_png_rect(data.width +2, data.height+2, "post_genrated");
+    let (isEq, vec_c_examp) =
+        graph.is_equivalent_counterexample2(&graph1, *_width + 3, startpoint, alphabet);
+    if isEq {
+        HttpResponse::Ok().json("true")
+    } else {
+        let mut word = String::new();
+        for symbol in vec_c_examp.iter() {
+            word.push(*symbol);
+        }
+        HttpResponse::Ok().json(word)
+    }
+}
+
 #[post("/check_membership")]
 pub async fn check_membership(path: String) -> HttpResponse {
     let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
@@ -1134,8 +1236,12 @@ pub async fn check_membership(path: String) -> HttpResponse {
     //let path: Vec<char> = _path.chars().collect();
     let result = graph.travers(*_width + 3, path);
     if result {
-        HttpResponse::Ok().json("1")
+        HttpResponse::Ok()
+        .header(header::CONTENT_TYPE, "application/json")
+        .body("1")
     } else {
-        HttpResponse::Ok().json("0")
+        HttpResponse::Ok()
+        .header(header::CONTENT_TYPE, "application/json")
+        .body("0")
     }
 }
