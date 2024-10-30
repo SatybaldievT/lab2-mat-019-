@@ -1063,9 +1063,10 @@ pub async fn generate_graph(data: Json<GenerateGraphRequest>) -> HttpResponse {
         "{} {} {} {}",
         data.num_of_finish_edge, data.pr_of_break_wall, data.width, data.height
     );
-
+    
     let alphabet = vec!['N', 'S', 'W', 'E'];
     graph.complete_with_alphabet(alphabet.clone());
+    
     let graph_string = graph.to_json_string();
     unsafe {
         *WIDTH.as_ref().unwrap().lock().unwrap() = data.width;
@@ -1079,13 +1080,19 @@ pub async fn generate_graph(data: Json<GenerateGraphRequest>) -> HttpResponse {
 #[get("/get_graph")]
 pub async fn get_graph() -> HttpResponse {
     // инициализируем граф, если он еще не инициализирован
-    let graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
+    let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
+    let mut _width = unsafe { WIDTH.as_ref().unwrap().lock().unwrap() };
+    let mut _height = unsafe { HEIGHT.as_ref().unwrap().lock().unwrap() };
     let graph_string = graph.to_json_string();
+    graph.print_png_rect(*_width+2, *_height+2, "get_graph.png");
+    graph.print_json_to_file("get_graph.json");
     HttpResponse::Ok().json(graph_string)
 }
 
 #[derive(Deserialize)]
 struct CheckAutomataRequest {
+    width: usize,
+    height: usize,
     startpoint: usize,
     graph_data: GraphData,
 }
@@ -1095,11 +1102,14 @@ pub async fn check_automata(data: Json<CheckAutomataRequest>) -> HttpResponse {
     // инициализируем граф, если он еще не инициализирован
     let mut graph1: Graph = Graph::from_json(&data.graph_data).expect("wrong graph json ");
     let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
-    let mut width = unsafe { WIDTH.as_ref().unwrap().lock().unwrap() };
+    let mut _width = unsafe { WIDTH.as_ref().unwrap().lock().unwrap() };
+    let mut _height = unsafe { HEIGHT.as_ref().unwrap().lock().unwrap() };
     let alphabet = vec!['N', 'S', 'W', 'E'];
+    // graph.print_png_rect(*_width +2, *_height+2, "post_genrated");
+    // graph1.print_png_rect(data.width +2, data.height+2, "post_genrated");
     let (isEq, vec_c_examp) = graph.is_equivalent_counterexample2(
         &graph1,
-        *width + 3,
+        *_width + 3,
         data.startpoint,
         alphabet,
     );
@@ -1113,3 +1123,18 @@ pub async fn check_automata(data: Json<CheckAutomataRequest>) -> HttpResponse {
         HttpResponse::Ok().json(word)
     }
 }
+#[post("/check_membership")]
+pub async fn check_membership(path: String) -> HttpResponse {
+    let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
+    let mut _width = unsafe { WIDTH.as_ref().unwrap().lock().unwrap() };
+    let mut _height = unsafe { HEIGHT.as_ref().unwrap().lock().unwrap() };
+
+    //let path: Vec<char> = _path.chars().collect();
+    let result = graph.travers(*_width + 3, path);
+    if result  {
+        HttpResponse::Ok().json("1")
+    } else {
+        HttpResponse::Ok().json("0")
+    }
+}
+
