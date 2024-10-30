@@ -1,3 +1,4 @@
+use actix_web::http::header;
 use actix_web::web::Json;
 use actix_web::{get, post, HttpResponse};
 use core::str;
@@ -224,7 +225,6 @@ impl Graph {
 
         result
     }
-
     pub fn travers(&self, start_node_index: usize, path: String) -> bool {
         let word: Vec<char> = path.chars().collect();
 
@@ -243,7 +243,6 @@ impl Graph {
 
         self.nodes[&current_node_index].isFinal
     }
-
     fn visualize_travers(
         &self,
         start_node_index: usize,
@@ -254,7 +253,6 @@ impl Graph {
     ) -> bool {
         true
     }
-
     fn print_dot(&self) {
         println!("digraph G {{");
         for (i, node) in &self.nodes {
@@ -442,7 +440,6 @@ impl Graph {
         // Если не найдено ни одной пары состояний, различающих автоматы, то они эквивалентны
         true
     }
-
     fn restore_path(
         &self,
         parent: HashMap<(usize, usize), Option<(usize, usize, char)>>,
@@ -523,6 +520,15 @@ impl Graph {
         }
 
         (true, self.restore_path(parent, used, (s1, s2)))
+    }
+
+    fn  from_table(
+        main_prefixes: String,
+        non_main_prefixes: String,
+        suffixes: String,
+        table: Vec<bool>
+    ){
+
     }
 
     pub fn is_equivalent_counterexample2(
@@ -768,9 +774,7 @@ fn rand_dfs_rect(
         );
     }
 }
-
 static mut GLOBAL_RNG: Option<rand::prelude::ThreadRng> = None;
-
 fn generate_random_number(n: u32) -> u32 {
     if n == 0 {
         return 0;
@@ -778,7 +782,6 @@ fn generate_random_number(n: u32) -> u32 {
 
     unsafe { GLOBAL_RNG.as_mut().unwrap().gen_range(0..=n - 1) }
 }
-
 pub fn fill_rand_dfs_rect(
     graph: &mut Graph,
     num_of_finish_edge: usize,
@@ -1048,7 +1051,7 @@ pub async fn generate_graph(data: Json<GenerateGraphRequest>) -> HttpResponse {
     init_graph(); // инициализируем граф, если он еще не инициализирован
 
     let mut graph = Graph::new();
-    
+
     unsafe {
         GLOBAL_RNG = Some(rand::thread_rng());
     }
@@ -1063,18 +1066,19 @@ pub async fn generate_graph(data: Json<GenerateGraphRequest>) -> HttpResponse {
         "{} {} {} {}",
         data.num_of_finish_edge, data.pr_of_break_wall, data.width, data.height
     );
-    
+
     let alphabet = vec!['N', 'S', 'W', 'E'];
     graph.complete_with_alphabet(alphabet.clone());
-    
+
     let graph_string = graph.to_json_string();
     unsafe {
         *WIDTH.as_ref().unwrap().lock().unwrap() = data.width;
         *HEIGHT.as_ref().unwrap().lock().unwrap() = data.height;
-        *GRAPH.as_ref().unwrap().lock().unwrap() = graph};
-    
-    
-    HttpResponse::Ok().json(graph_string)
+        *GRAPH.as_ref().unwrap().lock().unwrap() = graph
+    };
+
+    HttpResponse::Ok().header(header::CONTENT_TYPE, "application/json")
+     .body(graph_string)
 }
 
 #[get("/get_graph")]
@@ -1084,9 +1088,10 @@ pub async fn get_graph() -> HttpResponse {
     let mut _width = unsafe { WIDTH.as_ref().unwrap().lock().unwrap() };
     let mut _height = unsafe { HEIGHT.as_ref().unwrap().lock().unwrap() };
     let graph_string = graph.to_json_string();
-    graph.print_png_rect(*_width+2, *_height+2, "get_graph.png");
+    graph.print_png_rect(*_width + 2, *_height + 2, "get_graph.png");
     graph.print_json_to_file("get_graph.json");
-    HttpResponse::Ok().json(graph_string)
+    HttpResponse::Ok().header(header::CONTENT_TYPE, "application/json")
+     .body(graph_string)
 }
 
 #[derive(Deserialize)]
@@ -1107,12 +1112,8 @@ pub async fn check_automata(data: Json<CheckAutomataRequest>) -> HttpResponse {
     let alphabet = vec!['N', 'S', 'W', 'E'];
     // graph.print_png_rect(*_width +2, *_height+2, "post_genrated");
     // graph1.print_png_rect(data.width +2, data.height+2, "post_genrated");
-    let (isEq, vec_c_examp) = graph.is_equivalent_counterexample2(
-        &graph1,
-        *_width + 3,
-        data.startpoint,
-        alphabet,
-    );
+    let (isEq, vec_c_examp) =
+        graph.is_equivalent_counterexample2(&graph1, *_width + 3, data.startpoint, alphabet);
     if isEq {
         HttpResponse::Ok().json("true")
     } else {
@@ -1123,6 +1124,7 @@ pub async fn check_automata(data: Json<CheckAutomataRequest>) -> HttpResponse {
         HttpResponse::Ok().json(word)
     }
 }
+
 #[post("/check_membership")]
 pub async fn check_membership(path: String) -> HttpResponse {
     let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
@@ -1131,10 +1133,9 @@ pub async fn check_membership(path: String) -> HttpResponse {
 
     //let path: Vec<char> = _path.chars().collect();
     let result = graph.travers(*_width + 3, path);
-    if result  {
+    if result {
         HttpResponse::Ok().json("1")
     } else {
         HttpResponse::Ok().json("0")
     }
 }
-
