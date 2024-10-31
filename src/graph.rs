@@ -5,7 +5,7 @@ use core::str;
 use image::{ImageBuffer, Rgba};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::{char, fs, string};
 
 #[derive(Deserialize)]
@@ -506,11 +506,17 @@ impl Graph {
                             parent.insert((*nu, *nv), Some((u, v, *c)));
                         }
                     }
-                    (Some(_), None) => {
-                        return (false, self.restore_path(parent, used, (u, v)));
+                    (Some((nu, _)), None) => {
+                        let mut ret_vec= self.restore_path(parent, used, (u, v));
+                        ret_vec.push(*c);
+                        ret_vec = self.dfs(*nu,&ret_vec,alphabet).expect("dfs warning ");
+                        return (false, ret_vec);
                     }
-                    (None, Some(_)) => {
-                        return (false, self.restore_path(parent, used, (u, v)));
+                    (None, Some((nv, _))) => {
+                        let mut ret_vec= self.restore_path(parent, used, (u, v));
+                        ret_vec.push(*c);
+                        ret_vec = other.dfs(*nv,&ret_vec,alphabet).expect("dfs warning ");
+                        return (false, ret_vec);
                     }
                     (None, None) => {
                         continue;
@@ -573,12 +579,14 @@ impl Graph {
                         // Если не использовали пару состояний (u', v'), то добавляем в очередь
                         if let Some(value) = used.get(&(*nu, *nv)) {
                             queue.push((*nu, *nv, path.clone()));
+                            
                             used.insert((*nu, *nv), true);
                         }
                     }
                     (Some(_), None) => {
                         // Если нашлось состояние, не имеющее соответствия в другом автомате,
                         // то автоматы не эквивалентны
+                        
                         return (false, path);
                     }
                     (None, Some(_)) => {
@@ -596,6 +604,39 @@ impl Graph {
 
         // Если не найдено ни одной пары состояний, различающих автоматы, то они эквивалентны
         (true, path)
+    }
+
+    fn dfs(&self, state: usize, path: &Vec<char>, alphabet: Vec<char>) -> Option<Vec<char>> {
+        if self.nodes[&state].isFinal {
+            return Some(path.to_vec());
+        }
+    
+        let mut visited: HashSet<usize> = HashSet::new();
+        let mut stack: Vec<(usize, Vec<char>)> = vec![(state, path.to_vec())];
+    
+        while let Some((current_state, current_path)) = stack.pop() {
+            if visited.contains(&current_state) {
+                continue;
+            }
+            visited.insert(current_state);
+    
+            for c in alphabet.iter() {
+                let neighbor = self.nodes[&current_state].neighbors
+                    .iter()
+                    .find(|&&(neighbor_state, neighbor_char)| neighbor_char == *c);
+                if let Some((neighbor_state, _)) = neighbor {
+                    let mut new_path = current_path.clone();
+                    new_path.push(*c);
+    
+                    if self.nodes[&neighbor_state].isFinal {
+                        return Some(new_path);
+                    }
+                    stack.push((*neighbor_state, new_path));
+                }
+            }
+        }
+    
+        None
     }
 }
 
@@ -1225,7 +1266,7 @@ pub async fn check_table(data: Json<CheckTableRequest>) -> HttpResponse {
     // graph.print_png_rect(*_width +2, *_height+2, "post_genrated");
     // graph1.print_png_rect(data.width +2, data.height+2, "post_genrated");
     let (isEq, vec_c_examp) =
-        graph.is_equivalent_counterexample2(&graph1, *_width + 3, startpoint, alphabet);
+        graph.is_equivalent_counterexample(&graph1, *_width + 3, startpoint, alphabet);
     if isEq {
         HttpResponse::Ok()
             .header(header::CONTENT_TYPE, "application/json")
@@ -1257,5 +1298,22 @@ pub async fn check_membership(path: String) -> HttpResponse {
         HttpResponse::Ok()
             .header(header::CONTENT_TYPE, "application/json")
             .body("0")
+    }
+}
+#[get("/get_path")]
+pub async fn get_path() -> HttpResponse {
+    let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
+    let mut _width = unsafe { WIDTH.as_ref().unwrap().lock().unwrap() };
+    let mut _height = unsafe { HEIGHT.as_ref().unwrap().lock().unwrap() };
+    let alphabet = vec!['N', 'S', 'W', 'E'];
+    let startpoint = *_width+3;
+    let path = graph.dfs(startpoint, &Vec::new(), alphabet.clone());
+    match path {
+        Some(path) => HttpResponse::Ok()
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(path.iter().collect::<String>()),
+        None => HttpResponse::Ok()
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(""),
     }
 }

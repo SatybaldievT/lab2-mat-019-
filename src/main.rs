@@ -27,6 +27,7 @@ async fn main() -> io::Result<()> {
             .service(graph::check_automata)
             .service(graph::check_membership)
             .service(graph::check_table)
+            .service(graph::get_path)
     })
     .bind("127.0.0.1:8080")?
     .run()
