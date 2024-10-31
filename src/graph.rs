@@ -92,11 +92,12 @@ impl Graph {
     fn add_edge(&mut self, from: usize, to: usize, symbol: char) {
         if self.nodes.get(&from).is_some() {
             if let Some(node) = self.nodes.get_mut(&from) {
-                node.neighbors.push((to, symbol));
+                if !node.neighbors.contains(&(to, symbol)) {
+                    node.neighbors.push((to, symbol));
+                }
             }
         }
     }
-
     fn has_edge(&self, from: usize, to: usize) -> bool {
         if let Some(node) = self.nodes.get(&from) {
             node.neighbors.iter().any(|&(neighbor, _)| neighbor == to)
@@ -507,15 +508,15 @@ impl Graph {
                         }
                     }
                     (Some((nu, _)), None) => {
-                        let mut ret_vec= self.restore_path(parent, used, (u, v));
+                        let mut ret_vec = self.restore_path(parent, used, (u, v));
                         ret_vec.push(*c);
-                        ret_vec = self.dfs(*nu,&ret_vec,alphabet).expect("dfs warning ");
+                        ret_vec = self.dfs(*nu, &ret_vec, alphabet).expect("dfs warning ");
                         return (false, ret_vec);
                     }
                     (None, Some((nv, _))) => {
-                        let mut ret_vec= self.restore_path(parent, used, (u, v));
+                        let mut ret_vec = self.restore_path(parent, used, (u, v));
                         ret_vec.push(*c);
-                        ret_vec = other.dfs(*nv,&ret_vec,alphabet).expect("dfs warning ");
+                        ret_vec = other.dfs(*nv, &ret_vec, alphabet).expect("dfs warning ");
                         return (false, ret_vec);
                     }
                     (None, None) => {
@@ -579,14 +580,14 @@ impl Graph {
                         // Если не использовали пару состояний (u', v'), то добавляем в очередь
                         if let Some(value) = used.get(&(*nu, *nv)) {
                             queue.push((*nu, *nv, path.clone()));
-                            
+
                             used.insert((*nu, *nv), true);
                         }
                     }
                     (Some(_), None) => {
                         // Если нашлось состояние, не имеющее соответствия в другом автомате,
                         // то автоматы не эквивалентны
-                        
+
                         return (false, path);
                     }
                     (None, Some(_)) => {
@@ -610,24 +611,25 @@ impl Graph {
         if self.nodes[&state].isFinal {
             return Some(path.to_vec());
         }
-    
+
         let mut visited: HashSet<usize> = HashSet::new();
         let mut stack: Vec<(usize, Vec<char>)> = vec![(state, path.to_vec())];
-    
+
         while let Some((current_state, current_path)) = stack.pop() {
             if visited.contains(&current_state) {
                 continue;
             }
             visited.insert(current_state);
-    
+
             for c in alphabet.iter() {
-                let neighbor = self.nodes[&current_state].neighbors
+                let neighbor = self.nodes[&current_state]
+                    .neighbors
                     .iter()
                     .find(|&&(neighbor_state, neighbor_char)| neighbor_char == *c);
                 if let Some((neighbor_state, _)) = neighbor {
                     let mut new_path = current_path.clone();
                     new_path.push(*c);
-    
+
                     if self.nodes[&neighbor_state].isFinal {
                         return Some(new_path);
                     }
@@ -635,7 +637,7 @@ impl Graph {
                 }
             }
         }
-    
+
         None
     }
 }
@@ -1102,6 +1104,7 @@ pub fn dfa_from_lstar(
     for (idx, p) in main_prefixes.iter().enumerate() {
         state_map.insert(p.to_string(), idx);
         let is_final = rows[idx].chars().next().unwrap().to_digit(10).unwrap() == 1;
+
         graph.add_node(idx, is_final);
         if (p.to_string() == "".to_string()) {
             if q0.is_none() {
@@ -1125,11 +1128,12 @@ pub fn dfa_from_lstar(
             let letter = p.chars().last().unwrap();
             let from = *state_map.get(sub_prefix).unwrap_or(&0);
             let to = *state_map.get(p).unwrap_or(&0);
+
             graph.add_edge(from, to, letter);
         }
     }
     graph.print_dot();
-
+    graph.print_json_to_file("table.json");
     (q0.expect("smt with table"), graph)
 }
 
@@ -1306,7 +1310,7 @@ pub async fn get_path() -> HttpResponse {
     let mut _width = unsafe { WIDTH.as_ref().unwrap().lock().unwrap() };
     let mut _height = unsafe { HEIGHT.as_ref().unwrap().lock().unwrap() };
     let alphabet = vec!['N', 'S', 'W', 'E'];
-    let startpoint = *_width+3;
+    let startpoint = *_width + 3;
     let path = graph.dfs(startpoint, &Vec::new(), alphabet.clone());
     match path {
         Some(path) => HttpResponse::Ok()
