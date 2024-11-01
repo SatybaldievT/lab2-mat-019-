@@ -46,6 +46,7 @@ struct point {
 }
 // Define a struct to represent the graph
 pub struct Graph {
+    start_node_index: Option<usize>,
     nodes: HashMap<usize, Node>,
 }
 impl Clone for Node {
@@ -70,6 +71,7 @@ impl Graph {
     // Create a new graph
     pub fn new() -> Self {
         Graph {
+            start_node_index: None,
             nodes: HashMap::new(),
         }
     }
@@ -640,6 +642,94 @@ impl Graph {
 
         None
     }
+
+    fn suffix_to_rows(&self, prefix: String, suffixes: &[String]) -> String {
+        let mut concatenated_results = String::new();
+        for suffix in suffixes {
+            let concatenated = format!("{}{}", prefix, suffix);
+            // Предполагается, что self.travers возвращает строку
+            if self.travers(
+                self.start_node_index.expect("НЕТ СТАРТОВОЙ ТОЧКИ В ОСНОВНОМ ГРАФЕ"),
+                concatenated,
+            ) {
+                concatenated_results.push_str("1");
+            } else {
+                concatenated_results.push_str("0");
+            }
+        }
+
+        // Выводим полученные результаты для отладки
+        concatenated_results
+    }
+    pub fn dfa_from_lstar(
+        &self,
+        main_prefixes: &[String],
+        complementary_prefixes: &[String],
+        suffixes: &[String],
+        rows: Vec<String>,
+    ) -> (usize, Graph) {
+        let mut graph = Graph::new();
+        let mut state_map = HashMap::new();
+        let mut prefix_to_row = HashMap::new();
+        let mut row_to_idx = HashMap::new();
+        
+        let mut q0 = None;
+
+        for (idx, p) in main_prefixes.iter().enumerate() {
+            state_map.insert(p.to_string(), idx+1);
+            let is_final = rows[idx].chars().next().unwrap().to_digit(10).unwrap() == 1;
+
+            graph.add_node(idx, is_final);
+            if (p.to_string() == "".to_string()) {
+                if q0.is_none() {
+                    q0 = Some(idx);
+                }
+            }
+        }
+
+        for (idx, p) in main_prefixes.iter().enumerate() {
+            prefix_to_row.insert(p.to_string(), rows[idx].clone());
+            row_to_idx.insert(rows[idx].clone(), idx);
+            
+        }
+
+        for (idx, p) in complementary_prefixes.iter().enumerate() {
+            prefix_to_row.insert(p.to_string(), rows[main_prefixes.len() + idx].clone());
+        }
+
+        for p in main_prefixes.iter().chain(complementary_prefixes) {
+            if p.len() > 0 {
+                let sub_prefix = &p[0..p.len() - 1];
+                let letter = p.chars().last().unwrap();
+                let sub_row = match prefix_to_row.get(sub_prefix) {
+                    Some(row) => row.clone(),
+                    None => self.suffix_to_rows(sub_prefix.to_string(), suffixes),
+                };
+                
+                let main_row = prefix_to_row.get(p).expect("возможно ошибка полноты ");
+                
+                let from = *row_to_idx.get(&sub_row).expect("Error DFA");
+                
+                let to = *row_to_idx
+                    .get(main_row)
+                    .expect("Error DFA");
+
+                if graph.nodes.get(&from).map_or(false, |node| {
+                    node.neighbors.iter().any(|neighbor| neighbor.1 == letter)
+                }) {
+                    eprintln!(
+                        "Warning: Переход по '{} {}' уже существует для состояния {} ",
+                        letter, from, sub_prefix
+                    );
+                }
+
+                graph.add_edge(from, to, letter);
+            }
+        }
+        graph.print_dot();
+        graph.print_json_to_file("table.json");
+        (q0.expect("smt with table"), graph)
+    }
 }
 
 enum Side {
@@ -888,6 +978,7 @@ pub fn fill_rand_dfs_rect(
         }
     }
 }
+
 /*
 fn main2() {
     let mut graph = Graph::new();
@@ -1089,53 +1180,6 @@ fn init_graph() {
 }
 
 // cпасибо вове за кусочек кода
-pub fn dfa_from_lstar(
-    main_prefixes: &[String],
-    complementary_prefixes: &[String],
-    suffixes: &[String],
-    rows: Vec<String>,
-) -> (usize, Graph) {
-    let mut graph = Graph::new();
-    let mut state_map = HashMap::new();
-    let mut prefix_to_row = HashMap::new();
-    let mut row_to_prefix = HashMap::new();
-    let mut q0 = None;
-
-    for (idx, p) in main_prefixes.iter().enumerate() {
-        state_map.insert(p.to_string(), idx);
-        let is_final = rows[idx].chars().next().unwrap().to_digit(10).unwrap() == 1;
-
-        graph.add_node(idx, is_final);
-        if (p.to_string() == "".to_string()) {
-            if q0.is_none() {
-                q0 = Some(idx);
-            }
-        }
-    }
-
-    for (idx, p) in main_prefixes.iter().enumerate() {
-        prefix_to_row.insert(p.to_string(), rows[idx].as_str());
-        row_to_prefix.insert(rows[idx].as_str(), p.to_string());
-    }
-
-    for (idx, p) in complementary_prefixes.iter().enumerate() {
-        prefix_to_row.insert(p.to_string(), rows[main_prefixes.len() + idx].as_str());
-    }
-
-    for p in main_prefixes.iter().chain(complementary_prefixes) {
-        if p.len() > 0 {
-            let sub_prefix = &p[0..p.len() - 1];
-            let letter = p.chars().last().unwrap();
-            let from = *state_map.get(sub_prefix).unwrap_or(&0);
-            let to = *state_map.get(p).unwrap_or(&0);
-
-            graph.add_edge(from, to, letter);
-        }
-    }
-    graph.print_dot();
-    graph.print_json_to_file("table.json");
-    (q0.expect("smt with table"), graph)
-}
 
 #[post("/generate_graph")]
 pub async fn generate_graph(data: Json<GenerateGraphRequest>) -> HttpResponse {
@@ -1160,7 +1204,7 @@ pub async fn generate_graph(data: Json<GenerateGraphRequest>) -> HttpResponse {
 
     let alphabet = vec!['N', 'S', 'W', 'E'];
     graph.complete_with_alphabet(alphabet.clone());
-
+    graph.start_node_index = Some(data.width+3);
     let graph_string = graph.to_json_string();
     unsafe {
         *WIDTH.as_ref().unwrap().lock().unwrap() = data.width;
@@ -1257,15 +1301,16 @@ pub async fn check_table(data: Json<CheckTableRequest>) -> HttpResponse {
         .collect();
 
     // инициализация графов
-    let (mut startpoint, mut graph1) = dfa_from_lstar(
+
+    let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
+    let mut _width = unsafe { WIDTH.as_ref().unwrap().lock().unwrap() };
+    let mut _height = unsafe { HEIGHT.as_ref().unwrap().lock().unwrap() };
+    let (mut startpoint, mut graph1) = graph.dfa_from_lstar(
         &main_prefix_strings,
         &complementary_prefix_strings,
         &suffix_strings,
         table_rows,
     );
-    let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
-    let mut _width = unsafe { WIDTH.as_ref().unwrap().lock().unwrap() };
-    let mut _height = unsafe { HEIGHT.as_ref().unwrap().lock().unwrap() };
     let alphabet = vec!['N', 'S', 'W', 'E'];
     // graph.print_png_rect(*_width +2, *_height+2, "post_genrated");
     // graph1.print_png_rect(data.width +2, data.height+2, "post_genrated");
