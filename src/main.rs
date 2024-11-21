@@ -26,6 +26,7 @@ async fn main() -> io::Result<()> {
             .service(graph::get_graph)
             .service(graph::check_automata)
             .service(graph::check_membership)
+            .service(graph::check_memberships)
             .service(graph::check_table)
             .service(graph::get_path)
     })

@@ -1349,6 +1349,27 @@ pub async fn check_membership(path: String) -> HttpResponse {
             .body("0")
     }
 }
+
+#[post("/check_memberships")]
+pub async fn check_memberships(body: Json<Vec<String>>) -> HttpResponse {
+    let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
+    let mut _width = unsafe { WIDTH.as_ref().unwrap().lock().unwrap() };
+    let mut _height = unsafe { HEIGHT.as_ref().unwrap().lock().unwrap() };
+
+    let mut results = Vec::new();
+    for path in body.0 {
+        let result = graph.travers(*_width + 3, path);
+        if result{
+        results.push(1);}
+        else{
+        results.push(0);}
+        
+    }
+
+    HttpResponse::Ok()
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(format!("{:?}", results))
+}
 #[get("/get_path")]
 pub async fn get_path() -> HttpResponse {
     let mut graph = unsafe { GRAPH.as_ref().unwrap().lock().unwrap() };
